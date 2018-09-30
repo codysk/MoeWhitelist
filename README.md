@@ -2,7 +2,7 @@ MoeWhitelist
 ==================
 A simple whitelist base on nickname for sponge server
 
-###Usage
+### Usage
 
 Add a player to whitelist
 ```
