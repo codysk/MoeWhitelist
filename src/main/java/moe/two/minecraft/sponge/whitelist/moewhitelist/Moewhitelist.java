@@ -1,15 +1,21 @@
 package moe.two.minecraft.sponge.whitelist.moewhitelist;
 
+import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
 import com.google.inject.Inject;
 import org.slf4j.Logger;
 import org.spongepowered.api.Game;
+import org.spongepowered.api.Sponge;
+import org.spongepowered.api.command.CommandResult;
+import org.spongepowered.api.command.args.GenericArguments;
+import org.spongepowered.api.command.spec.CommandSpec;
 import org.spongepowered.api.event.Listener;
 import org.spongepowered.api.event.game.state.GameStartingServerEvent;
 import org.spongepowered.api.event.network.ClientConnectionEvent;
 import org.spongepowered.api.plugin.Plugin;
+import org.spongepowered.api.text.Text;
 import org.spongepowered.api.text.serializer.TextSerializers;
 
 import java.nio.file.Files;
@@ -20,7 +26,7 @@ import java.util.Set;
 @Plugin(
         id = "moewhitelist",
         name = "Moewhitelist",
-        version = "1.0-SNAPSHOT",
+        version = "1.0",
         description = "A Simple whitelist plugin for sponge",
         authors = {
                 "Skywind"
@@ -32,19 +38,20 @@ public class Moewhitelist {
     private Logger logger;
 
     @Inject
-    Game game;
+    private Game game;
 
     private static Set<String> whitelist;
+    private Path whitelist_file_path;
 
     @Listener
     public void onServerStart(GameStartingServerEvent event) throws Exception {
+
         logger.info("MoeWhitelist loading...");
         Path world_directory_path = game.getSavesDirectory();
-        Path whitelist_file_path = world_directory_path.resolve("whitelist.json");
-
+        whitelist_file_path = world_directory_path.resolve(Sponge.getServer().getDefaultWorldName()).resolve("MoeWhitelist.json");
         whitelist = loadWhitelist(whitelist_file_path);
 
-        // TODO: register command for manager interface
+        registerCommand();
 
         logger.info("MoeWhitelist loaded");
     }
@@ -85,7 +92,7 @@ public class Moewhitelist {
 
             } catch (Exception e){
                 e.printStackTrace();
-                logger.warn("Load Whitelist File Err! using as empty");
+                logger.warn("Load Whitelist File failed! using as empty");
             }
 
         } else {
@@ -98,5 +105,66 @@ public class Moewhitelist {
             }
         }
         return whitelist;
+    }
+
+    private void saveWhitelist(Set<String> whitelist, Path whitelist_file_path) {
+        synchronized (this) {
+            try {
+                String json_str = (new Gson()).toJson(whitelist);
+                Files.write(whitelist_file_path, json_str.getBytes());
+            } catch (Exception e) {
+                e.printStackTrace();
+                logger.warn("Save Whitelist File failed!");
+            }
+        }
+    }
+
+    private void registerCommand() {
+        CommandSpec add_command = CommandSpec.builder()
+                .permission("MoeWhitelist.command.add")
+                .description(Text.of("add player to whitelist"))
+                .arguments(
+                        GenericArguments.string(Text.of("nickname"))
+                )
+                .executor((src, args) -> {
+                    String nickname = args.<String>getOne("nickname").get();
+                    whitelist.add(nickname);
+                    saveWhitelist(whitelist, whitelist_file_path);
+                    src.sendMessage(Text.of(nickname + " Added!"));
+                    return CommandResult.success();
+                })
+                .build();
+        CommandSpec del_command = CommandSpec.builder()
+                .permission("MoeWhitelist.command.del")
+                .description(Text.of("del player from whitelist"))
+                .arguments(
+                        GenericArguments.string(Text.of("nickname"))
+                )
+                .executor((src, args) -> {
+                    String nickname = args.<String>getOne("nickname").get();
+                    whitelist.remove(nickname);
+                    saveWhitelist(whitelist, whitelist_file_path);
+                    src.sendMessage(Text.of(nickname + " Deleted!"));
+                    return CommandResult.success();
+                })
+                .build();
+        CommandSpec list_command = CommandSpec.builder()
+                .permission("MoeWhitelist.command.list")
+                .description(Text.of("list player on whitelist"))
+                .executor((src, args) -> {
+                    src.sendMessage(Text.of(whitelist.toString()));
+                    return CommandResult.success();
+                })
+                .build();
+
+        CommandSpec moewhitelist_command = CommandSpec.builder()
+                .permission("MoeWhitelist.command")
+                .description(Text.of("MoeWhitelist Manage Command"))
+                .child(add_command, "add", "a")
+                .child(del_command, "del", "d")
+                .child(list_command, "list", "l")
+                .build();
+
+        Sponge.getCommandManager().register(this, moewhitelist_command, "MoeWhitelist", "wl", "WL");
     }
 }
